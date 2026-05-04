@@ -3,8 +3,6 @@ name: Build UxPlay Debian Package
 on:
   push:
     branches: [ "master", "main" ]
-  pull_request:
-    branches: [ "master", "main" ]
   workflow_dispatch:
 
 jobs:
@@ -14,50 +12,45 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libssl-dev \
-            libplist-dev \
-            libavahi-compat-libdnssd-dev \
-            libgstreamer1.0-dev \
+            build-essential cmake pkg-config libssl-dev libplist-dev \
+            libavahi-compat-libdnssd-dev libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev
 
-      - name: Configure CMake
+      - name: Inject CPack Configuration
+        run: |
+          # Append CPack logic to the end of CMakeLists.txt
+          cat <<EOF >> CMakeLists.txt
+
+          # CPack configuration
+          set(CPACK_GENERATOR "DEB")
+          set(CPACK_PACKAGE_NAME "uxplay")
+          set(CPACK_PACKAGE_VERSION "1.71")
+          set(CPACK_PACKAGE_CONTACT "https://github.com/FDH2/UxPlay")
+          set(CPACK_DEBIAN_PACKAGE_DEPENDS "libssl3, libplist3, libavahi-client3, libgstreamer1.0-0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-libav")
+          set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "AirPlay Unix mirroring server")
+          include(CPack)
+          EOF
+
+      - name: Configure and Build
         run: |
           mkdir build
           cd build
-          # -DCMAKE_INSTALL_PREFIX=/usr ensures it installs to standard paths in the deb
           cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
-
-      - name: Build
-        run: |
-          cd build
           make -j$(nproc)
 
-      - name: Package as DEB
+      - name: Package
         run: |
           cd build
-          # We use CPack to generate the .deb. 
-          # We override metadata here in case the project's CMakeLists doesn't have it.
-          cpack -G DEB \
-            -D CPACK_PACKAGE_NAME="uxplay" \
-            -D CPACK_PACKAGE_VERSION="1.71" \
-            -D CPACK_PACKAGE_CONTACT="https://github.com/FDH2/UxPlay" \
-            -D CPACK_DEBIAN_PACKAGE_DEPENDS="libssl3, libplist3, libavahi-client3, libgstreamer1.0-0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-libav" \
-            -D CPACK_DEBIAN_PACKAGE_DESCRIPTION="AirPlay Unix mirroring server" \
-            -D CPACK_DEBIAN_PACKAGE_SECTION="video" \
-            -D CPACK_DEBIAN_PACKAGE_PRIORITY="optional"
+          # Now that include(CPack) was in CMakeLists, this will work
+          cpack -G DEB
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: uxplay-ubuntu-deb
+          name: uxplay-deb
           path: build/*.deb
